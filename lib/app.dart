@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:dialer_app_poc/features/contacts/presentation/screens/contacts_screen.dart';
 import 'package:dialer_app_poc/features/call_history/presentation/screens/call_history_screen.dart';
 import 'package:dialer_app_poc/features/call_history/presentation/screens/widgets/notes_popup_dialog.dart';
+import 'package:dialer_app_poc/features/contacts/presentation/screens/dialpad_screen.dart';
 import 'package:dialer_app_poc/providers.dart';
 import 'package:dialer_app_poc/core/constants/app_constants.dart';
 import 'package:dialer_app_poc/features/call_history/domain/entities/call_history_entity.dart';
@@ -53,13 +55,13 @@ void initState() {
 Future<void> _initApp() async {
   print('[DEBUG] App: Initializing app...');
 
-  // Wait for the native rootViewController to be fully ready on iOS
   await Future.delayed(const Duration(milliseconds: 500));
 
-  // Explicitly request contacts permission before loading contacts
-  print('[DEBUG] App: Requesting Contacts permission...');
-  final status = await Permission.contacts.request();
-  print('[DEBUG] App: Contacts permission status: $status');
+  // NATIVE CONTACTS DISABLED (CRM Mode)
+  // To re-enable, uncomment the lines below:
+  // print('[DEBUG] App: Requesting Contacts permission...');
+  // final status = await Permission.contacts.request();
+  // print('[DEBUG] App: Contacts permission status: $status');
 
   if (mounted) {
     ref.read(contactsProvider.notifier).loadContacts();
@@ -112,9 +114,14 @@ Future<void> _initApp() async {
     print('[DEBUG] AppLifecycle: Checking for pending calls...');
     final callHistoryState = ref.read(callHistoryProvider);
     
-    if (callHistoryState.pendingCalls.isNotEmpty) {
-      print('[DEBUG] AppLifecycle: Found ${callHistoryState.pendingCalls.length} pending calls. Triggering single popup for the latest.');
-      _showSingleNotesPopup(callHistoryState.pendingCalls.first);
+    // Safety check: Only trigger popups for calls initiated within the last 2 hours
+    final validPendingCalls = callHistoryState.pendingCalls.where((c) {
+      return DateTime.now().difference(c.callTime).inHours < 2;
+    }).toList();
+    
+    if (validPendingCalls.isNotEmpty) {
+      print('[DEBUG] AppLifecycle: Found ${validPendingCalls.length} valid pending calls. Triggering single popup for the latest.');
+      _showSingleNotesPopup(validPendingCalls.first);
     } else {
       print('[DEBUG] AppLifecycle: No pending calls found.');
     }
@@ -146,27 +153,40 @@ Future<void> _initApp() async {
   Widget build(BuildContext context) {
     final themeData = ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF6366F1), // Modern Indigo
-        brightness: Brightness.light,
-        surface: Colors.white,
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: Colors.black,
+      colorScheme: const ColorScheme.dark(
+        primary: Color(0xFF007AFF), // iOS Blue
+        surface: Colors.black,
+        secondary: Color(0xFF1C1C1E), // iOS Dark Gray
       ),
-      textTheme: GoogleFonts.outfitTextTheme(),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        color: const Color(0xFFF8FAFC),
-      ),
-      appBarTheme: AppBarTheme(
-        centerTitle: false,
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Color(0xFF1E293B)),
-        titleTextStyle: GoogleFonts.outfit(
-          color: const Color(0xFF1E293B),
-          fontSize: 24,
+      textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme).copyWith(
+        titleLarge: GoogleFonts.outfit(
+          color: Colors.white,
+          fontSize: 34,
           fontWeight: FontWeight.bold,
         ),
+      ),
+      appBarTheme: AppBarTheme(
+        centerTitle: true,
+        backgroundColor: Colors.black,
+        elevation: 0,
+        surfaceTintColor: Colors.black,
+        iconTheme: const IconThemeData(color: Color(0xFF007AFF)),
+        actionsIconTheme: const IconThemeData(color: Color(0xFF007AFF)),
+        titleTextStyle: GoogleFonts.outfit(
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Color(0xFF161616),
+        selectedItemColor: Color(0xFF007AFF),
+        unselectedItemColor: Color(0xFF8E8E93),
+        selectedLabelStyle: TextStyle(fontSize: 10),
+        unselectedLabelStyle: TextStyle(fontSize: 10),
+        type: BottomNavigationBarType.fixed,
       ),
     );
 
@@ -175,69 +195,50 @@ Future<void> _initApp() async {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: themeData,
+      themeMode: ThemeMode.dark,
       home: const MainNavigator(),
     );
   }
 }
 
-class MainNavigator extends StatefulWidget {
+class MainNavigator extends ConsumerWidget {
   const MainNavigator({super.key});
 
   @override
-  State<MainNavigator> createState() => _MainNavigatorState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selectedIndex = ref.watch(navigationProvider);
 
-class _MainNavigatorState extends State<MainNavigator> {
-  int _selectedIndex = 0;
+    final List<Widget> screens = [
+      const CallHistoryScreen(), // Recents
+      const ContactsScreen(),   // Contacts
+      DialpadScreen(),           // Keypad
+    ];
 
-  final List<Widget> _screens = [
-    const ContactsScreen(),
-    const CallHistoryScreen(),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: Container(
-        padding: const EdgeInsets.only(top: 8, bottom: 0),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: SizedBox(
-            height: 72,
-            child: BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (index) => setState(() => _selectedIndex = index),
-              elevation: 0,
-              backgroundColor: Colors.transparent,
-              selectedItemColor: const Color(0xFF6366F1),
-              unselectedItemColor: const Color(0xFF94A3B8),
-              selectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13),
-              unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w500, fontSize: 12),
-              items: const [
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.contacts_rounded, size: 26),
-                  activeIcon: Icon(Icons.contacts_rounded, size: 26),
-                  label: 'Contacts',
-                ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.history_rounded, size: 26),
-                  activeIcon: Icon(Icons.history_rounded, size: 26),
-                  label: 'History',
-                ),
-              ],
-            ),
+      body: IndexedStack(
+        index: selectedIndex,
+        children: screens,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: selectedIndex,
+        onTap: (index) => ref.read(navigationProvider.notifier).state = index,
+        backgroundColor: const Color(0xFF1C1C1E),
+        selectedItemColor: const Color(0xFF007AFF),
+        unselectedItemColor: const Color(0xFF8E8E93),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.access_time_filled),
+            label: 'Recents',
           ),
-        ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_circle),
+            label: 'Contacts',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dialpad),
+            label: 'Keypad',
+          ),
+        ],
       ),
     );
   }

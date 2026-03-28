@@ -44,11 +44,30 @@ class CallHistoryNotifier extends StateNotifier<CallHistoryState> {
       (calls) {
         final sortedCalls = List<CallHistoryEntity>.from(calls)
           ..sort((a, b) => b.callTime.compareTo(a.callTime));
-        final pending = sortedCalls.where((c) => c.status == AppConstants.statusPending).toList();
-        print('[DEBUG] CallHistoryNotifier: Load successful. Total: ${calls.length}, Pending: ${pending.length}');
+          
+        final pending = <CallHistoryEntity>[];
+        final cleanedCalls = <CallHistoryEntity>[];
+
+        for (var c in sortedCalls) {
+          if (c.status == AppConstants.statusPending) {
+            // Auto-complete stale pending calls (older than 2 hours)
+            if (DateTime.now().difference(c.callTime).inHours >= 2) {
+              print('[DEBUG] CallHistoryNotifier: Found stale pending call ${c.id}. Auto-completing.');
+              _markCompletedUseCase(c.id); // Update in Hive silently
+              cleanedCalls.add(c.copyWith(status: AppConstants.statusCompleted));
+            } else {
+              pending.add(c);
+              cleanedCalls.add(c);
+            }
+          } else {
+            cleanedCalls.add(c);
+          }
+        }
+
+        print('[DEBUG] CallHistoryNotifier: Load successful. Total: ${cleanedCalls.length}, Pending: ${pending.length}');
         state = state.copyWith(
           isLoading: false,
-          calls: sortedCalls,
+          calls: cleanedCalls,
           pendingCalls: pending,
         );
       },
@@ -77,7 +96,7 @@ class CallHistoryNotifier extends StateNotifier<CallHistoryState> {
     
     // Sync with iOS CallKit
     if (Platform.isIOS) {
-      await _callDirectoryService.syncData(state.calls);
+      await _callDirectoryService.syncAllData();
     }
     
     // Sync with Android Call Screening
@@ -117,7 +136,7 @@ class CallHistoryNotifier extends StateNotifier<CallHistoryState> {
     
     // Sync with iOS CallKit
     if (Platform.isIOS) {
-      await _callDirectoryService.syncData(state.calls);
+      await _callDirectoryService.syncAllData();
     }
     
     // Sync with Android Call Screening
@@ -154,6 +173,10 @@ class CallHistoryNotifier extends StateNotifier<CallHistoryState> {
     print('[DEBUG] CallHistoryNotifier: Delete successful. Refreshing calls...');
     await loadCalls();
     
+    if (Platform.isIOS) {
+      await _callDirectoryService.syncAllData();
+    }
+
     if (Platform.isAndroid && phoneNumber != null) {
       print('[DEBUG] CallHistoryNotifier: Removing note from Android SharedPreferences...');
       await SharedPreferencesService.deleteNoteFromSharedPrefs(phoneNumber);

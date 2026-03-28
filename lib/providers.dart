@@ -92,3 +92,5 @@ final callHistoryProvider = StateNotifierProvider<CallHistoryNotifier, CallHisto
     callDirectoryService: ref.watch(callDirectoryServiceProvider),
   );
 });
+
+final navigationProvider = StateProvider<int>((ref) => 0);

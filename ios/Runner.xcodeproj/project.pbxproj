@@ -540,7 +540,7 @@
 /* Begin PBXTargetDependency section */
 		331C8086294A63A400263BE5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 331C8080294A63A400263BE5 /* RunnerTests */;
+			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
 		};
 		B85810562F73D1D70059B43C /* PBXTargetDependency */ = {

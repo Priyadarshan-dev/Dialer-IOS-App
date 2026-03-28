@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
@@ -8,6 +9,7 @@ import 'package:dialer_app_poc/providers.dart';
 import 'package:dialer_app_poc/core/constants/app_constants.dart';
 import 'package:dialer_app_poc/features/call_history/domain/entities/call_history_entity.dart';
 import 'package:dialer_app_poc/core/services/notification_service.dart';
+import 'package:dialer_app_poc/features/contacts/presentation/screens/add_app_contact_screen.dart';
 
 class DialpadScreen extends ConsumerStatefulWidget {
   const DialpadScreen({super.key});
@@ -38,9 +40,24 @@ class _DialpadScreenState extends ConsumerState<DialpadScreen> {
   Future<void> _onCall() async {
     if (_phoneNumber.isEmpty) return;
 
+    // Resolve name from contacts if available
+    final contactsState = ref.read(contactsProvider);
+    String resolvedName = '';
+    final rawInput = _phoneNumber.replaceAll(RegExp(r'\D'), '');
+
+    for (var contact in contactsState.contacts) {
+      final matches = contact.phoneNumbers.any((p) => 
+          p.replaceAll(RegExp(r'\D'), '') == rawInput
+      );
+      if (matches) {
+        resolvedName = contact.displayName;
+        break;
+      }
+    }
+
     final callHistory = CallHistoryEntity(
       id: const Uuid().v4(),
-      contactName: 'Manual Dial',
+      contactName: resolvedName,
       phoneNumber: _phoneNumber,
       callTime: DateTime.now(),
       status: AppConstants.statusPending,
@@ -51,11 +68,20 @@ class _DialpadScreenState extends ConsumerState<DialpadScreen> {
 
     // 2. Initiate call locally
     print('[DEBUG] DialpadScreen: Initiating call to $_phoneNumber');
+    
+    // Switch tab to Recents BEFORE the call starts or immediately after
+    // This ensures that when the user returns to the app, they see Recents.
+    ref.read(navigationProvider.notifier).state = 0;
+
     final res = await FlutterPhoneDirectCaller.callNumber(_phoneNumber);
+
+    setState(() {
+      _phoneNumber = '';
+    });
     
     // 3. iOS Workaround: Show notification reminder
     if (res == true || Platform.isIOS) {
-      await NotificationService().showCallReminder('Manual Dial ($_phoneNumber)');
+      await NotificationService().showCallReminder(_phoneNumber);
     }
 
     if (res == false && mounted) {
@@ -68,45 +94,54 @@ class _DialpadScreenState extends ConsumerState<DialpadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
+      backgroundColor: Colors.black,
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 32),
-              // Display Number
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                child: Text(
-                  _phoneNumber.isEmpty ? 'Enter Number' : _phoneNumber,
-                  style: GoogleFonts.outfit(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: _phoneNumber.isEmpty ? const Color(0xFFCBD5E1) : const Color(0xFF1E293B),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            const Spacer(),
+            // Display Number
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Text(
+                _phoneNumber,
+                style: GoogleFonts.outfit(
+                  fontSize: 40,
+                  fontWeight: FontWeight.w400,
+                  color: Colors.white,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24),
-              // Dialpad Grid
-              _buildDialpad(),
-              const SizedBox(height: 24),
-              // Bottom Actions
-              _buildActions(),
-              const SizedBox(height: 32),
-            ],
-          ),
+            ),
+            if (_phoneNumber.isNotEmpty)
+              CupertinoButton(
+                child: const Text('Add Number', style: TextStyle(color: Color(0xFF007AFF), fontSize: 17)),
+                onPressed: () {
+                  Navigator.push<bool>(
+                    context,
+                    CupertinoPageRoute(
+                      builder: (context) => AddAppContactScreen(initialPhoneNumber: _phoneNumber),
+                      fullscreenDialog: true,
+                    ),
+                  ).then((success) {
+                    if (success == true) {
+                      setState(() {
+                        _phoneNumber = '';
+                      });
+                    }
+                    ref.read(contactsProvider.notifier).loadContacts();
+                  });
+                },
+              ),
+            const Spacer(),
+            // Dialpad Grid
+            _buildDialpad(),
+            const SizedBox(height: 20),
+            // Bottom Actions
+            _buildActions(),
+            const SizedBox(height: 20),
+          ],
         ),
       ),
     );
@@ -121,15 +156,15 @@ class _DialpadScreenState extends ConsumerState<DialpadScreen> {
     ];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40.0),
+      padding: const EdgeInsets.symmetric(horizontal: 45.0),
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           mainAxisSpacing: 16,
-          crossAxisSpacing: 24,
-          childAspectRatio: 1,
+          crossAxisSpacing: 26,
+          childAspectRatio: 1.0,
         ),
         itemCount: keys.length,
         itemBuilder: (context, index) {
@@ -147,38 +182,31 @@ class _DialpadScreenState extends ConsumerState<DialpadScreen> {
 
   Widget _buildActions() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40.0),
+      padding: const EdgeInsets.symmetric(horizontal: 45.0),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const SizedBox(width: 64), // Spacer for centering
-          // Call Button
+          const SizedBox(width: 40), // Empty space to balance the backspace icon
           GestureDetector(
             onTap: _onCall,
             child: Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: const Color(0xFF22C55E),
+              width: 75,
+              height: 75,
+              decoration: const BoxDecoration(
+                color: Color(0xFF34C759),
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF22C55E).withValues(alpha: 0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
               ),
-              child: const Icon(Icons.call_rounded, color: Colors.white, size: 36),
+              child: const Icon(Icons.call, color: Colors.white, size: 35),
             ),
           ),
-          // Backspace Button
           SizedBox(
-            width: 64,
-            child: IconButton(
-              onPressed: _onBackspace,
-              icon: const Icon(Icons.backspace_rounded, color: Color(0xFF94A3B8), size: 28),
-            ),
+            width: 40,
+            child: _phoneNumber.isNotEmpty 
+              ? IconButton(
+                  icon: const Icon(Icons.backspace, color: Color(0xFF8E8E93), size: 28),
+                  onPressed: _onBackspace,
+                )
+              : null,
           ),
         ],
       ),
@@ -199,12 +227,11 @@ class _DialButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
+    return GestureDetector(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(50),
       child: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
+        decoration: const BoxDecoration(
+          color: Color(0xFF333333), // Lighter gray for dialpad buttons
           shape: BoxShape.circle,
         ),
         child: Column(
@@ -213,19 +240,19 @@ class _DialButton extends StatelessWidget {
             Text(
               number,
               style: GoogleFonts.outfit(
-                fontSize: 28,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF1E293B),
+                fontSize: 36,
+                fontWeight: FontWeight.w400,
+                color: Colors.white,
               ),
             ),
             if (letters.isNotEmpty)
               Text(
                 letters,
-                style: GoogleFonts.outfit(
+                style: const TextStyle(
                   fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF64748B),
-                  letterSpacing: 1,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 2.0,
                 ),
               ),
           ],

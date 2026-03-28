@@ -3,6 +3,7 @@ class AppConstants {
   
   // Hive Box Names
   static const String callHistoryBox = 'call_history_box';
+  static const String appContactsBox = 'app_contacts_box';
   
   // iOS Call Directory Constants
   static const String appGroupId = 'group.com.liquid.dialer.shared';

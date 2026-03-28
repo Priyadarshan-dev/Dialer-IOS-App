@@ -39,8 +39,12 @@ class NotificationService {
     await androidImplementation?.requestNotificationsPermission();
   }
 
-  Future<void> showCallReminder(String contactName) async {
+  Future<void> showCallReminder(String contactName, {String? note}) async {
     // Show reminder for all platforms (workaround for iOS, consistency for Android)
+    
+    final String body = note != null && note.isNotEmpty 
+        ? 'Note: $note\nTap to add more notes.'
+        : 'Don\'t forget to add notes for $contactName';
 
     const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
       'call_reminders',
@@ -64,8 +68,8 @@ class NotificationService {
 
     await _notificationsPlugin.show(
       id: 0,
-      title: 'Save Call Notes',
-      body: 'Don\'t forget to add notes for $contactName',
+      title: 'Swift Call: $contactName',
+      body: body,
       notificationDetails: platformChannelSpecifics,
       payload: 'call_reminder',
     );

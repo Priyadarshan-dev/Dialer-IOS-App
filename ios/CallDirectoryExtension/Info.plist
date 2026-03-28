@@ -9,5 +9,9 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).CallDirectoryHandler</string>
 	</dict>
+	<key>CFBundleDisplayName</key>
+	<string>Contact</string>
+	<key>CFBundleName</key>
+	<string>Contact</string>
 </dict>
 </plist>

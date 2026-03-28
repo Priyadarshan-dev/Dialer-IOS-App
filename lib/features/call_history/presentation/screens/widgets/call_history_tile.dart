@@ -1,66 +1,56 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:dialer_app_poc/features/call_history/domain/entities/call_history_entity.dart';
-import 'package:dialer_app_poc/core/utils/date_formatter.dart';
+import 'package:intl/intl.dart';
 
 class CallHistoryTile extends StatelessWidget {
   final CallHistoryEntity call;
   final VoidCallback onEdit;
+  final VoidCallback onCall;
   final VoidCallback onDelete;
 
   const CallHistoryTile({
     super.key,
     required this.call,
     required this.onEdit,
+    required this.onCall,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    final name = call.contactName;
-    final timeStr = DateFormatter.formatCallTime(call.callTime);
+    final isMissed = call.status == 'missed';
+    final name = call.contactName.isNotEmpty ? call.contactName : call.phoneNumber;
+    final timeStr = DateFormat('h:mm a').format(call.callTime);
+    
+    // Notes prefix logic matching User Request if notes exist
+    final subtitle = (call.notes != null && call.notes!.isNotEmpty)
+        ? 'Notes : ${call.notes}'
+        : '';
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF6366F1).withValues(alpha: 0.04),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+    return Dismissible(
+      key: Key(call.id),
+      direction: DismissDirection.endToStart,
+      onDismissed: (direction) => onDelete(),
+      background: Container(
+        color: const Color(0xFFFF3B30),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Text(
+          'Delete',
+          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
         ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 12, 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [const Color(0xFF6366F1).withValues(alpha: 0.8), const Color(0xFF818CF8)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : '?',
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // Left Side: Name and Subtitle (trigger Call)
+              Expanded(
+                child: InkWell(
+                  onTap: onCall,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 0, 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -68,129 +58,60 @@ class CallHistoryTile extends StatelessWidget {
                           name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF1E293B),
+                          style: TextStyle(
+                            color: isMissed ? Colors.red : Colors.white,
                             fontSize: 17,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          call.phoneNumber,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFF64748B),
-                            fontSize: 14,
-                            letterSpacing: 0.5,
+                        if (subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF8E8E93),
+                              fontSize: 13,
+                            ),
                           ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                ),
+              ),
+              
+              // Right Side: Time and Info Icon (trigger Edit/Details)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onEdit,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         timeStr,
                         style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF8E8E93),
+                          fontSize: 15,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _ActionButton(
-                            icon: Icons.edit_note_rounded,
-                            color: const Color(0xFF6366F1),
-                            onTap: onEdit,
-                          ),
-                          const SizedBox(width: 8),
-                          _ActionButton(
-                            icon: Icons.delete_outline_rounded,
-                            color: const Color(0xFFF43F5E),
-                            onTap: onDelete,
-                          ),
-                        ],
+                      const SizedBox(width: 8),
+                      const Icon(
+                        Icons.info_outline,
+                        color: Color(0xFF007AFF),
+                        size: 24,
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            if (call.notes != null && call.notes!.isNotEmpty)
-              Container(
-                width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6366F1).withValues(alpha: 0.08),
-                  borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(16),
-                    bottomRight: Radius.circular(16),
-                    topLeft: Radius.circular(4),
-                    bottomLeft: Radius.circular(4),
-                  ),
-                  border: const Border(
-                    left: BorderSide(color: Color(0xFF6366F1), width: 4),
-                  ),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.edit_note_rounded, size: 18, color: Color(0xFF6366F1)),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        call.notes!,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF1E293B),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
+            ],
           ),
-          child: Icon(icon, size: 18, color: color),
-        ),
+          const Divider(color: Color(0xFF38383A), height: 1, indent: 16),
+        ],
       ),
     );
   }
