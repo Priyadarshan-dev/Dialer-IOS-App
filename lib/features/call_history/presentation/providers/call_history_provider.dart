@@ -169,6 +169,16 @@ class CallHistoryNotifier extends StateNotifier<CallHistoryState> {
     );
   }
 
+  Future<void> deleteCalls(List<String> ids, String? phoneNumber) async {
+    print('[DEBUG] CallHistoryNotifier: Deleting multiple calls: ${ids.length}...');
+    
+    for (final id in ids) {
+      await _deleteCallUseCase(id);
+    }
+    
+    _handleDeleteSuccess(phoneNumber);
+  }
+
   Future<void> _handleDeleteSuccess(String? phoneNumber) async {
     print('[DEBUG] CallHistoryNotifier: Delete successful. Refreshing calls...');
     await loadCalls();

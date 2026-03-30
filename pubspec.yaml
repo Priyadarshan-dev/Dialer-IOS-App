@@ -43,6 +43,7 @@ dependencies:
   dartz: ^0.10.1
   flutter_local_notifications: ^21.0.0
   shared_preferences: ^2.2.0
+  flutter_slidable: ^3.0.0
 
 dev_dependencies:
   flutter_test:

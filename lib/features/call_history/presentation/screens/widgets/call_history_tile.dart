@@ -1,10 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:dialer_app_poc/features/call_history/domain/entities/call_history_entity.dart';
 import 'package:intl/intl.dart';
 
 class CallHistoryTile extends StatelessWidget {
   final CallHistoryEntity call;
+  final int count;
   final VoidCallback onEdit;
   final VoidCallback onCall;
   final VoidCallback onDelete;
@@ -12,6 +14,7 @@ class CallHistoryTile extends StatelessWidget {
   const CallHistoryTile({
     super.key,
     required this.call,
+    required this.count,
     required this.onEdit,
     required this.onCall,
     required this.onDelete,
@@ -21,6 +24,7 @@ class CallHistoryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMissed = call.status == 'missed';
     final name = call.contactName.isNotEmpty ? call.contactName : call.phoneNumber;
+    final displayName = count > 1 ? '$name ($count)' : name;
     final timeStr = DateFormat('h:mm a').format(call.callTime);
     
     // Notes prefix logic matching User Request if notes exist
@@ -28,18 +32,19 @@ class CallHistoryTile extends StatelessWidget {
         ? 'Notes : ${call.notes}'
         : '';
 
-    return Dismissible(
+    return Slidable(
       key: Key(call.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (direction) => onDelete(),
-      background: Container(
-        color: const Color(0xFFFF3B30),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Text(
-          'Delete',
-          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
-        ),
+      endActionPane: ActionPane(
+        motion: const BehindMotion(),
+        extentRatio: 0.25,
+        children: [
+          SlidableAction(
+            onPressed: (context) => onDelete(),
+            backgroundColor: const Color(0xFFFF3B30),
+            foregroundColor: Colors.white,
+            label: 'Delete',
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -55,7 +60,7 @@ class CallHistoryTile extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          name,
+                          displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(

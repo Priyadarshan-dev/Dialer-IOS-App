@@ -15,8 +15,17 @@ class ContactDetailsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final name = contact.displayName;
-    final phone = contact.phoneNumbers.isNotEmpty ? contact.phoneNumbers.first : 'No number';
+    // Watch relevant contacts state to reflect changes instantly
+    final state = ref.watch(contactsProvider);
+    
+    // Find the latest version of the contact from our live state
+    // We filter by ID since name or phone could have changed
+    final latestContact = state.contacts.any((c) => c.id == contact.id)
+        ? state.contacts.firstWhere((c) => c.id == contact.id)
+        : contact;
+
+    final name = latestContact.displayName;
+    final phone = latestContact.phoneNumbers.isNotEmpty ? latestContact.phoneNumbers.first : 'No number';
     final initials = name.isNotEmpty 
         ? name.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
         : '';
@@ -44,7 +53,7 @@ class ContactDetailsScreen extends ConsumerWidget {
               Navigator.push(
                 context,
                 CupertinoPageRoute(
-                  builder: (context) => AddAppContactScreen(existingContact: contact),
+                  builder: (context) => AddAppContactScreen(existingContact: latestContact),
                   fullscreenDialog: true,
                 ),
               ).then((_) => ref.read(contactsProvider.notifier).loadContacts());

@@ -72,37 +72,90 @@ class _CallHistoryScreenState extends ConsumerState<CallHistoryScreen> {
       );
     }
 
+    // Grouping Logic
+    final Map<String, List<CallHistoryEntity>> groupedMap = {};
+    for (var call in calls) {
+      groupedMap.putIfAbsent(call.phoneNumber, () => []).add(call);
+    }
+
+    // Convert map to a list of groups, sorted by the latest call in each group
+    final List<List<CallHistoryEntity>> groupedList = groupedMap.values.toList()
+      ..sort((a, b) => b.first.callTime.compareTo(a.first.callTime));
+
     return ListView.builder(
       physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: calls.length,
+      itemCount: groupedList.length,
       itemBuilder: (context, index) {
-        final call = calls[index];
+        final group = groupedList[index];
+        final latestCall = group.first;
+        final count = group.length;
+
+        // Find the latest non-empty note in the group
+        String? latestNote;
+        for (var c in group) {
+          if (c.notes != null && c.notes!.isNotEmpty) {
+            latestNote = c.notes;
+            break; // Since the group is sorted by time, the first non-empty note is the latest
+          }
+        }
+
         return CallHistoryTile(
-          call: call,
+          call: latestCall.copyWith(notes: latestNote),
+          count: count,
           onEdit: () {
             Navigator.push(
               context,
-              CupertinoPageRoute(builder: (context) => RecentDetailsScreen(call: call)),
+              CupertinoPageRoute(
+                builder: (context) => RecentDetailsScreen(
+                  calls: group,
+                ),
+              ),
             );
           },
           onCall: () async {
-            if (call.phoneNumber.isNotEmpty) {
+            if (latestCall.phoneNumber.isNotEmpty) {
               final newCallHistory = CallHistoryEntity(
                 id: const Uuid().v4(),
-                contactName: call.contactName,
-                phoneNumber: call.phoneNumber,
+                contactName: latestCall.contactName,
+                phoneNumber: latestCall.phoneNumber,
                 callTime: DateTime.now(),
                 status: AppConstants.statusPending,
               );
               await ref.read(callHistoryProvider.notifier).saveCall(newCallHistory);
-              await FlutterPhoneDirectCaller.callNumber(call.phoneNumber);
+              await FlutterPhoneDirectCaller.callNumber(latestCall.phoneNumber);
             }
           },
           onDelete: () {
-            ref.read(callHistoryProvider.notifier).deleteCall(call.id);
+            _showDeleteConfirmation(context, ref, group);
           },
         );
       },
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, List<CallHistoryEntity> group) {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (context) => CupertinoActionSheet(
+        title: const Text('Delete History'),
+        message: const Text('Deleting this history will also clear all saved notes for this contact.'),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              final ids = group.map((c) => c.id).toList();
+              final phoneNumber = group.first.phoneNumber;
+              ref.read(callHistoryProvider.notifier).deleteCalls(ids, phoneNumber);
+              Navigator.pop(context);
+            },
+            child: const Text('Delete History'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+      ),
     );
   }
 }

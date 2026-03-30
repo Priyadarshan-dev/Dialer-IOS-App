@@ -9,17 +9,55 @@ import 'package:dialer_app_poc/features/call_history/domain/entities/call_histor
 import 'package:dialer_app_poc/features/call_history/presentation/screens/widgets/notes_popup_dialog.dart';
 import 'package:dialer_app_poc/providers.dart';
 
-class RecentDetailsScreen extends ConsumerWidget {
-  final CallHistoryEntity call;
+class RecentDetailsScreen extends ConsumerStatefulWidget {
+  final List<CallHistoryEntity> calls;
 
-  const RecentDetailsScreen({super.key, required this.call});
+  const RecentDetailsScreen({super.key, required this.calls});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final timeStr = DateFormat('h:mm a').format(call.callTime);
-    final dateStr = _formatDate(call.callTime);
-    final initials = call.contactName.isNotEmpty 
-        ? call.contactName.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
+  ConsumerState<RecentDetailsScreen> createState() => _RecentDetailsScreenState();
+}
+
+class _RecentDetailsScreenState extends ConsumerState<RecentDetailsScreen> {
+  bool _showAllNotes = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.calls.isEmpty) return const SizedBox.shrink();
+
+    // Watch relevant call history state to reflect changes instantly
+    final historyState = ref.watch(callHistoryProvider);
+    
+    // Get the phone number of the contact we're viewing
+    final phoneNumber = widget.calls.first.phoneNumber;
+    
+    // Find the latest version of these calls from our live state
+    final liveCalls = historyState.calls
+        .where((c) => c.phoneNumber == phoneNumber)
+        .toList()
+      ..sort((a, b) => b.callTime.compareTo(a.callTime));
+    
+    // Use live data if found, or fall back to the initial list
+    final currentCalls = liveCalls.isNotEmpty ? liveCalls : widget.calls;
+    final latestCall = currentCalls.first;
+    
+    // Find the latest non-empty note to show at the top
+    CallHistoryEntity? latestNoteCall;
+    for (var c in currentCalls) {
+      if (c.notes != null && c.notes!.isNotEmpty) {
+        latestNoteCall = c;
+        break;
+      }
+    }
+
+    // Filter calls that have notes for the "Show More" section
+    final pastNotesCalls = currentCalls.where((c) {
+      if (latestNoteCall != null && c.id == latestNoteCall.id) return false;
+      return c.notes != null && c.notes!.isNotEmpty;
+    }).toList();
+
+    final initials = latestCall.contactName.isNotEmpty 
+        ? latestCall.contactName.trim().split(' ').map((e) => e[0]).take(2).join().toUpperCase()
         : '';
 
     return Scaffold(
@@ -44,7 +82,7 @@ class RecentDetailsScreen extends ConsumerWidget {
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (context) => NotesPopupDialog(call: call, isEdit: true),
+                builder: (context) => NotesPopupDialog(call: latestCall, isEdit: true),
               );
             },
           ),
@@ -68,7 +106,7 @@ class RecentDetailsScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             // Name
             Text(
-              call.contactName.isNotEmpty ? call.contactName : call.phoneNumber,
+              latestCall.contactName.isNotEmpty ? latestCall.contactName : latestCall.phoneNumber,
               style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w400),
             ),
             const SizedBox(height: 20),
@@ -79,16 +117,16 @@ class RecentDetailsScreen extends ConsumerWidget {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () async {
-                    if (call.phoneNumber.isNotEmpty) {
-                      final callHistory = CallHistoryEntity(
+                    if (latestCall.phoneNumber.isNotEmpty) {
+                      final newCallHistory = CallHistoryEntity(
                         id: const Uuid().v4(),
-                        contactName: call.contactName,
-                        phoneNumber: call.phoneNumber,
+                        contactName: latestCall.contactName,
+                        phoneNumber: latestCall.phoneNumber,
                         callTime: DateTime.now(),
                         status: AppConstants.statusPending,
                       );
-                      await ref.read(callHistoryProvider.notifier).saveCall(callHistory);
-                      await FlutterPhoneDirectCaller.callNumber(call.phoneNumber);
+                      await ref.read(callHistoryProvider.notifier).saveCall(newCallHistory);
+                      await FlutterPhoneDirectCaller.callNumber(latestCall.phoneNumber);
                     }
                   },
                   child: const Padding(
@@ -106,12 +144,14 @@ class RecentDetailsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             
-            // Call Info Card
+            // Recent Calls Info Card (showing details for the latest few calls)
             _buildSectionCard(
-              children: [
-                _buildInfoRow(dateStr, ''),
-                _buildInfoRow(timeStr, 'Outgoing Call'),
-              ],
+              children: currentCalls.take(3).map((c) => Column(
+                children: [
+                  _buildInfoRow(_formatDate(c.callTime), DateFormat('h:mm a').format(c.callTime)),
+                  if (c != currentCalls.take(3).last) const Divider(color: Color(0xFF38383A), height: 12),
+                ],
+              )).toList(),
             ),
             
             // Phone Number Card
@@ -133,7 +173,7 @@ class RecentDetailsScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  call.phoneNumber.startsWith('+') ? call.phoneNumber : '+91 ${call.phoneNumber}',
+                  latestCall.phoneNumber.startsWith('+') ? latestCall.phoneNumber : '+91 ${latestCall.phoneNumber}',
                   style: const TextStyle(color: Color(0xFF007AFF), fontSize: 15),
                 ),
               ],
@@ -141,14 +181,63 @@ class RecentDetailsScreen extends ConsumerWidget {
             
             // Notes Card
             _buildSectionCard(
-              title: 'Notes',
+              title: 'Latest Note',
               children: [
-                Text(
-                  call.notes ?? 'No notes available.',
-                  style: const TextStyle(color: Colors.white, fontSize: 15),
-                ),
+                if (latestNoteCall != null) ...[
+                  Text(
+                    latestNoteCall.notes ?? '',
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    DateFormat('MMM d, h:mm a').format(latestNoteCall.callTime),
+                    style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12),
+                  ),
+                ] else
+                  const Text(
+                    'No notes available.',
+                    style: TextStyle(color: Color(0xFF8E8E93), fontSize: 15),
+                  ),
               ],
             ),
+
+            // Past Notes (Show More logic)
+            if (pastNotesCalls.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    if (!_showAllNotes)
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: const Text('Show More Notes', style: TextStyle(color: Color(0xFF007AFF), fontSize: 15)),
+                        onPressed: () => setState(() => _showAllNotes = true),
+                      ),
+                    if (_showAllNotes) ...[
+                      const SizedBox(height: 10),
+                      ...pastNotesCalls.map((c) => _buildSectionCard(
+                        children: [
+                          Text(
+                            c.notes ?? '',
+                            style: const TextStyle(color: Colors.white, fontSize: 15),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            DateFormat('MMM d, h:mm a').format(c.callTime),
+                            style: const TextStyle(color: Color(0xFF8E8E93), fontSize: 12),
+                          ),
+                        ],
+                      )),
+                      CupertinoButton(
+                        padding: EdgeInsets.zero,
+                        child: const Text('Show Less', style: TextStyle(color: Color(0xFF8E8E93), fontSize: 15)),
+                        onPressed: () => setState(() => _showAllNotes = false),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
